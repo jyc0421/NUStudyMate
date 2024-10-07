@@ -2,6 +2,8 @@ package com.jyc.nustudymate.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.jyc.nustudymate.common.ErrorCode;
+import com.jyc.nustudymate.exception.BusinessException;
 import com.jyc.nustudymate.model.domain.User;
 import com.jyc.nustudymate.service.UserService;
 import com.jyc.nustudymate.mapper.UserMapper;
@@ -28,27 +30,27 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
     @Override
     public long userRegister(String userAccount, String userPassword, String checkPassword) {
         if(StringUtils.isAnyEmpty(userAccount,userPassword,checkPassword)){
-            return -1;
+            throw new BusinessException(ErrorCode.PARAMS_ERROR,"参数为空");
         }
         // 校验账号长度不小于4位，密码长度不小于8位
         if(userAccount.length()<4||userPassword.length()<8||checkPassword.length()<8){
-            return -1;
+            throw new BusinessException(ErrorCode.PARAMS_ERROR,"账号或密码过短");
         }
         // 校验用户名不含特殊字符
         String validPattern = "[`~!@#$%^&*()+=|{}':;',\\\\[\\\\].<>/?~！@#￥%……&*（）——+|{}【】‘；：”“’。，、？]";
         boolean match = userAccount.matches(validPattern);
         if(match){
-            return -1;
+            throw new BusinessException(ErrorCode.PARAMS_ERROR,"账号含有特殊字符");
         }
         if(!userPassword.equals(checkPassword)){
-            return -1;
+            throw new BusinessException(ErrorCode.PARAMS_ERROR,"密码不一致");
         }
         // 账号不重复
         QueryWrapper<User> queryWrapper  = new QueryWrapper<>();
         queryWrapper.eq("userAccount",userAccount);
         long count = this.count(queryWrapper);
         if(count>0){
-            return -1;
+            throw new BusinessException(ErrorCode.PARAMS_ERROR,"账号重复");
         }
         // Long count = userMapper.selectCount(queryWrapper);
         // if(count>0){
@@ -64,7 +66,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         user.setUserPassword(encryptPassword);
         boolean save = this.save(user);
         if(!save){
-            return -1;
+            throw new BusinessException(ErrorCode.PARAMS_ERROR,"注册失败");
         }
         return user.getId();
 
@@ -74,15 +76,15 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
     public User userLogin(String userAccount, String userPassword, HttpServletRequest request) {
         // 1.校验
         if(StringUtils.isAnyEmpty(userAccount,userPassword)){
-            return null;
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
         if(userAccount.length()<4||userPassword.length()<8){
-            return null;
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
         String validPattern = "[`~!@#$%^&*()+=|{}':;',\\\\[\\\\].<>/?~！@#￥%……&*（）——+|{}【】‘；：”“’。，、？]";
         boolean match = userAccount.matches(validPattern);
         if(match){
-            return null;
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
         // 2.校验密码是否正确
         QueryWrapper<User> queryWrapper = new QueryWrapper<>();
@@ -90,33 +92,43 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         User user = userMapper.selectOne(queryWrapper);
         if(user==null){
             log.info("user login failed,userAccount do not exist");
-            return null;
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
         String encryptPassword = user.getUserPassword();
         boolean isPasswordValid = BCrypt.checkpw(userPassword,encryptPassword);
         if(!isPasswordValid){
             log.info("user login failed,userAccount password error");
-            return null;
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
         // 3.用户脱敏
-        User safetUser = new User();
-        safetUser.setId(user.getId());
-        safetUser.setUsername(user.getUsername());
-        safetUser.setUserAccount(user.getUserAccount());
-        safetUser.setAvatarUrl(user.getAvatarUrl());
-        safetUser.setGender(user.getGender());
-        safetUser.setUserRole(user.getUserRole());
-        safetUser.setUserStatus(user.getUserStatus());
-        safetUser.setPhone(user.getPhone());
-        safetUser.setEmail(user.getEmail());
-        safetUser.setPlanetCode(user.getPlanetCode());
-        safetUser.setCreateTime(user.getCreateTime());
+        User safetyUser = new User();
+        safetyUser.setId(user.getId());
+        safetyUser.setUsername(user.getUsername());
+        safetyUser.setUserAccount(user.getUserAccount());
+        safetyUser.setAvatarUrl(user.getAvatarUrl());
+        safetyUser.setGender(user.getGender());
+        safetyUser.setUserRole(user.getUserRole());
+        safetyUser.setUserStatus(user.getUserStatus());
+        safetyUser.setPhone(user.getPhone());
+        safetyUser.setEmail(user.getEmail());
+        safetyUser.setPlanetCode(user.getPlanetCode());
+        safetyUser.setCreateTime(user.getCreateTime());
 
         // 4.记录用户登录态
         HttpSession session = request.getSession();
-        session.setAttribute("user",user);
-        log.info("user login success,userId:{}",user.getId());
-        return safetUser;
+        session.setAttribute("user",safetyUser);
+        log.info("user login success,userId:{}",safetyUser.getId());
+        return safetyUser;
+    }
+
+    @Override
+    public boolean userLogout(HttpServletRequest request) {
+        HttpSession session = request.getSession();
+        if(session.getAttribute("user")!=null){
+            session.removeAttribute("user");
+            return true;
+        }
+        return false;
     }
 }
 
